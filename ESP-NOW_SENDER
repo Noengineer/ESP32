@@ -66,7 +66,6 @@ void setup() {
     tft.setSwapBytes(true);
      tft.pushImage(0, 0, 170, 320, strand);
     
-   
 
    //DEEP SLEEP
   rtc_gpio_pullup_en((gpio_num_t)GPIO_NUM_0);
