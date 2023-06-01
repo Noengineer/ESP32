@@ -1,0 +1,134 @@
+//Feel free to use, reuse, publish or whatever
+//Remote Control - ESP - NOW
+//Press RST (Reset) to activate device - Then press left or right button to send the message you wish to send
+//I use this to open an electric gate
+
+#include <esp_now.h>
+#include <WiFi.h>
+#include <driver/rtc_io.h>
+#include <Wire.h>
+//Display
+#include <TFT_eSPI.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include "strand.h"
+#include "car.h"
+#include "crow.h"
+#include "pinguin.h"
+
+
+// ESP-NOW
+uint8_t broadcastAddress[] = { 0xxx, 0xxx, 0xxx, 0xxx, 0xxx, 0xxx };  // INSERT IP OF YOUR RECEIVER BOARD HERE (you can run a code to find out)
+typedef struct struct_message {
+  char a[32];   // send letters, words etc.
+  int b;        // send int (numbers)
+} struct_message;
+struct_message Data1;
+struct_message Data2;
+
+esp_now_peer_info_t peerInfo;
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+TFT_eSPI tft = TFT_eSPI();
+
+#define PIN_POWER_ON 15   // NEEDED SO THE DISPLAY WORKS WITH BATTERY FOR SOME REASON
+
+void setup() {
+  Serial.begin(9600);
+  //PINS
+  pinMode(0, INPUT_PULLUP);   // Left Button - Also I can´t make input_pulldown work ...yet - unless i use external buttons
+  pinMode(14, INPUT_PULLUP);  // Right Button
+  pinMode(PIN_POWER_ON, OUTPUT);      // NEEDED SO THE DISPLAY WORKS WITH BATTERY FOR SOME REASON
+  digitalWrite(PIN_POWER_ON, HIGH);   // NEEDED SO THE DISPLAY WORKS WITH BATTERY FOR SOME REASON
+                                
+                                //ESP-NOW
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  esp_now_register_send_cb(OnDataSent);
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
+
+    //Display
+    tft.init();
+    tft.fillScreen(TFT_BLACK);
+    tft.setSwapBytes(true);
+     tft.pushImage(0, 0, 170, 320, strand);
+    
+   
+
+   //DEEP SLEEP
+  rtc_gpio_pullup_en((gpio_num_t)GPIO_NUM_0);
+  rtc_gpio_pullup_en((gpio_num_t)GPIO_NUM_14);
+  //esp_sleep_enable_ext1_wakeup((1 << GPIO_NUM_0) | (1 << GPIO_NUM_14), ESP_EXT1_WAKEUP_ANY_HIGH);  // As I said.. Can´t make input_pulldown work ... yet
+  delay(180);
+  
+}
+
+void loop() {
+  //Left Button
+  if (digitalRead(0) == 0) {
+    strcpy(Data1.a, "activate door"); // Text
+    Serial.println("Door");
+    Data1.b = (30);    // Number
+   
+    
+
+tft.pushImage(0, 0, 170, 320, crow);
+
+    // Send message via ESP-NOW
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&Data1, sizeof(Data1));
+    if (result == ESP_OK) {
+      Serial.println("Sent with success"); 
+      delay(1000);
+    } else {
+      Serial.println("Error sending the data");
+      delay(200);
+    }
+    // Wait until reset button is released
+    while (digitalRead(0) == 0) {
+    delay(200);
+    tft.fillScreen(TFT_BLACK);
+    }
+   
+   esp_deep_sleep_start();
+  }
+
+  //Right Button
+  if (digitalRead(14) == 0) {
+    strcpy(Data2.a, "activate gate"); // I am using this to controll an electric gate
+    Serial.println("Gate");
+    Data2.b = (17);   
+    
+
+tft.pushImage(0, 0, 170, 320, car);
+    // Send message via ESP-NOW
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&Data2, sizeof(Data2));
+    if (result == ESP_OK) {
+      Serial.println("Sent with success"); 
+      delay(1000);
+    } else {
+      Serial.println("Error sending the data");
+      delay(200);
+    }
+    // Wait until reset button is released
+    while (digitalRead(14) == 0) {
+    delay(200);
+    tft.fillScreen(TFT_BLACK);
+    }
+    esp_deep_sleep_start();
+  }
+  //else {                          // This part is extra for when I figure out if I can make this code work with pulldown instead of pullup
+   // esp_deep_sleep_start();
+  //}
+}
