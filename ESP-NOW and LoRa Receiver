@@ -1,0 +1,176 @@
+//DEVICE: TTGO Paxcounter v.1.6 or so
+
+#include <esp_now.h>
+#include <WiFi.h>
+#include <LoRa.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+// Structure example to receive data
+// Must match the sender structure
+typedef struct struct_message {
+    char a[32];
+    int b;
+} struct_message;
+
+//LORA
+#define SCK 5
+#define MISO 19
+#define MOSI 27
+#define SS 18
+#define RST 23
+#define DIO0 26
+#define BAND 866E6
+
+//Pins, an denen das OLED-Display angeschlossen ist
+#define OLED_SDA 21
+#define OLED_SCL 22 
+#define OLED_RST -1
+#define SCREEN_ADDRESS 0x3C 
+//Displaygröße
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+//OLED-Display instanziieren
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+
+//Counter if you want to use it
+int counter = 0;
+//String for LoRaData
+String LoRaData;
+// Struct for ESP-Now
+struct_message myData;
+// callback function that will be executed when data is received with ESP-Now
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&myData, incomingData, sizeof(myData));
+  Serial.print("Bytes received: ");
+  Serial.println(len);
+  Serial.print("Char: ");
+  Serial.println(myData.a);
+  Serial.print("Int: ");
+  Serial.println(myData.b);
+  Serial.println();
+}
+
+void setup() {
+Serial.begin (9600);  //  MUST BE THE SAME AS THE SENDER
+// CPU freq - Energy saver
+setCpuFrequencyMhz(80);
+
+ //Reset des OLED-Displays
+  pinMode(OLED_RST, OUTPUT);
+  digitalWrite(OLED_RST, LOW);
+  delay(20);
+  digitalWrite(OLED_RST, HIGH);
+  
+  //DISPLAY
+  Wire.begin(OLED_SDA, OLED_SCL);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3c, false, false)) { // I2C-Adresse: 0x3C
+  Serial.println(F("Display not found."));
+  for(;;); //stop programm if display not found
+        }
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("LoRa RECEIVER ");
+  display.display(); 
+  //LORA
+  SPI.begin(SCK, MISO, MOSI, SS);
+  LoRa.setPins(SS, RST, DIO0);
+    
+  if (!LoRa.begin(BAND)) {
+    Serial.println("LoRa cannot be started!");
+    while (1); Serial.println("LoRa OK!");
+    display.setCursor(0,10);
+    display.print("LoRa OK!");
+    display.display();
+    delay(1000);
+    display.clearDisplay();
+    }
+
+  // ESP-NOW
+  WiFi.mode(WIFI_STA);
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  esp_now_register_recv_cb(OnDataRecv);
+
+
+  // initialize PINS as output (to light an LED or switch a relay)
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(15, OUTPUT);
+  pinMode (12, OUTPUT);
+  digitalWrite(15, LOW);
+delay(50);
+digitalWrite(15, HIGH);
+digitalWrite(12, LOW);
+delay(50);
+digitalWrite(12, HIGH);
+
+}
+
+// Light a LED, or switch a Relay, or do something else
+void loop() {
+   //LoRa Receiving
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) { 
+    Serial.print("Packet received ");
+
+//-----------------------------LoRA
+//while (LoRa.available()) {
+  LoRaData = LoRa.readString();
+  Serial.print(LoRaData);
+if (LoRaData == "12345") {  //your LoRa Signal 1
+digitalWrite(15, LOW);
+delay(350);
+digitalWrite(15, HIGH);
+LoRaData = "10";
+}
+if (LoRaData == "54321") {      //your LoRa Signal 2
+digitalWrite(12, LOW);
+delay(350);
+digitalWrite(12, HIGH);
+LoRaData = "10";
+}
+//}
+
+//RSSI on Display - not needed, but fun
+int rssi = LoRa.packetRssi();
+Serial.print(" RSSI ");
+Serial.println(rssi);
+display.clearDisplay();
+display.setCursor(0, 0);
+display.print("LoRa RECEIVER");
+display.setCursor(0, 10);
+display.setTextSize(1);
+display.println(LoRaData);
+display.setCursor(0, 20);
+display.print("received");
+display.setCursor(0, 30);
+display.print("RSSI:");
+display.setCursor(20, 45);
+display.print(rssi);
+display.display();
+delay (500);
+display.clearDisplay ();
+display.display();
+  }
+  
+//-----------------------------ESP-NOW (see my other code "esp-now_sender")
+
+if (myData.b == 17) { 
+digitalWrite(15, LOW);  
+delay(350);                      
+digitalWrite(15, HIGH);   
+myData.b = 10; 
+  }
+
+if (myData.b == 30) { 
+digitalWrite(12, LOW);  
+delay(350);                     
+digitalWrite(12, HIGH);  
+myData.b = 10; 
+  }
+}
